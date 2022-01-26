@@ -10,7 +10,7 @@ CORS(app)
 
 @app.route("/", methods=["POST"])
 def hello():
-    user_info = request.data.decode()
+    user_info = request.data.decode("UTF-8")
     print("Request", user_info)
     channel.queue_declare(queue='harrier')
     channel.basic_publish(
@@ -23,5 +23,4 @@ def hello():
 if __name__ == "__main__":
     connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
     channel = connection.channel()
-    app.run(host='0.0.0.0')
-    #channel.close()
+    app.run(host='0.0.0.0', port=5001)
