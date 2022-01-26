@@ -1,3 +1,4 @@
+from email import message
 from flask import Flask, request
 from flask_cors import CORS
 import json
@@ -11,12 +12,14 @@ CORS(app)
 @app.route("/", methods=["POST"])
 def hello():
     user_info = request.data.decode("UTF-8")
+    message_tag = "create_user_attempt"
+    message = [message_tag, user_info]
     print("Request", user_info)
     channel.queue_declare(queue='harrier')
     channel.basic_publish(
         exchange='',
         routing_key='harrier',
-        body=user_info
+        body=json.dumps(message)
     )
     return {"message": "data received"}
 
