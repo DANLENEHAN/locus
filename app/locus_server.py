@@ -3,19 +3,17 @@ from flask_cors import CORS
 from flask import session as flask_session
 from flask_session import Session
 import redis
-from database import (
-    create_user, validate_user, get_user
-)
+from database import create_user, user_logged_in, clear_cache, log_user_in
 from helpers import get_session
 import json
 import os
 
 app = Flask(__name__)
-app.config['SESSION_TYPE'] = 'redis'
-app.config['SESSION_REDIS'] = redis.Redis()
+app.config["SESSION_TYPE"] = "redis"
+app.config["SESSION_REDIS"] = redis.Redis()
 
 # https://flask.palletsprojects.com/en/1.1.x/config/#SECRET_KEY
-app.config['SECRET_KEY'] = os.environ['SESSION_PWD']
+app.config["SECRET_KEY"] = os.environ["SESSION_PWD"]
 
 CORS(app)
 Session(app)
@@ -24,9 +22,7 @@ Session(app)
 @app.route("/create_account", methods=["POST"])
 def create_account():
     try:
-        data = json.loads(
-            request.data.decode("UTF-8")
-        )
+        data = json.loads(request.data.decode("UTF-8"))
     except:
         return {"error": "invalid payload"}
 
@@ -35,19 +31,11 @@ def create_account():
     password = data.get("password")
 
     if not all([password, email, username]):
-        return (
-            {
-                "error": "missing one of password, email or username"
-            },
-            400
-        )
+        return ({"error": "missing one of password, email or username"}, 400)
 
     session = get_session()
     status = create_user(
-        session=session,
-        username=username,
-        email=email,
-        password=password
+        session=session, username=username, email=email, password=password
     )
 
     if status.get("error"):
@@ -56,13 +44,10 @@ def create_account():
         return status, 200
 
 
-
 @app.route("/login", methods=["POST"])
 def login_user():
     try:
-        data = json.loads(
-            request.data.decode("UTF-8")
-        )
+        data = json.loads(request.data.decode("UTF-8"))
     except:
         return {"error": "invalid payload"}
 
@@ -70,28 +55,31 @@ def login_user():
     password = data.get("password")
 
     if not all([password, email]):
-        return (
-            {
-                "error": "missing one of password or email"
-            },
-            400
-        )
+        return ({"error": "missing one of password or email"}, 400)
 
     session = get_session()
-    response = validate_user(
-        session=session,
-        email=email,
-        password=password
-    )
+    response = log_user_in(session=session, email=email, password=password)
+    return response
 
-    if response.get("success"):
-        user = get_user(session=session, email=email)
-        flask_session['username'] = user['username']
-        flask_session['id'] = user['id']
-        flask_session['user_id'] = f"{user['username']}_{user['id']}"
-        return response, 200
-    else:
-        return response, 400
+
+@app.route("/logout", methods=["POST"])
+def logout_user():
+    try:
+        data = json.loads(request.data.decode("UTF-8"))
+    except:
+        return {"error": "invalid payload"}, 400
+
+    email = data.get("email")
+
+    if not email:
+        return ({"error": "missing email"}, 400)
+
+    if user_logged_in():
+        result = clear_cache()
+        if result:
+            return {"success": "user logged out"}, 200
+
+    return {"error": "user never logged in"}, 200
 
 
 if __name__ == "__main__":
