@@ -1,61 +1,76 @@
 from typing import Dict
-import uuid
 from sqlalchemy import insert
-from sqlalchemy.orm import sessionmaker
 from models import *
-from helpers import sqlalchemy_obj_to_dict
+from helpers import (
+    sqlalchemy_obj_to_dict,
+    hash_password
+)
 
 
-def validate_user(Session: sessionmaker, user_data: dict) -> bool:
+def user_exists(session, email: str) -> Dict:
 
-    # Create Session
-    session = Session()
+    user = session.query(User).filter(User.email == email).one_or_none()
 
-    email = user_data['email']
-    password = user_data['password']
+    if user is not None:
+        return True
+    else:
+        return False
 
-    # One or none returns a 
+
+def validate_user(session, email: str, password: str) -> bool:
+
     user = session.query(User).filter(User.email == email).one_or_none()
 
     if user is not None:
         user = sqlalchemy_obj_to_dict(user)
+        user_password = user["password"]
+        if user_password == hash_password(password=password):
+            return {"success": "User valid"}
+        else:
+            return {"error": "Invalid Credentials"}
 
-    breakpoint()
+    else:
+        return {"error": "User doesn't exist"}
 
 
+def get_user(session, email: str):
+    user = session.query(User).filter(User.email == email).one_or_none()
 
-def create_user(Session: sessionmaker, user_data: Dict) -> None:
+    if user is not None:
+        return sqlalchemy_obj_to_dict(user)
+    else:
+        return {"error": "User doesn't exist"}
 
-    # Create Session
 
-    user_exists = validate_user(
-        Session=Session,
-        user_data=user_data
+def create_user(
+    session,
+    username: str,
+    email: str,
+    password: str
+) -> Dict:
+    """
+    Create user if it it doesn't
+    exist
+    """
+
+    user_exist = user_exists(
+        session=session,
+        email=email
     )
 
-    session = Session()
-
-    # Column values for a user row
-    user_id = uuid.uuid4().hex
-    email = user_data['email']
-    password = user_data['password']
-
-    # Construct an insert (executable statement) object
-    # Insert object is created using insert()
-    statement = (
-        insert(User).values(
-            user_id=user_id,
-            email=email,
-            password=password
+    if not user_exist:
+        statement = (
+            insert(User).values(
+                username=username,
+                email=email,
+                password=hash_password(password=password)
+            )
         )
-    )
 
-    # A session takes an executable statement param
-    # Examples of executable statements include
-    # Insert, Update, Delete, Select etc
-    session.execute(statement=statement)
-
-    # Session.commit() is required to persist new data to our DB
-    session.commit()
-
-    session.close()
+        session.execute(statement=statement)
+        session.commit()
+        session.close()
+    else:
+        return {"error": "User already exists"}
+    
+    return {"success": "User created"}

@@ -1,41 +1,38 @@
-from crypt import methods
-from email import message
 from flask import Flask, request
 from flask_cors import CORS
-from flask import session
+from flask import session as flask_session
 from flask_session import Session
 import redis
+from database import (
+    create_user, validate_user, get_user
+)
+from helpers import get_session
 import json
 import os
-import hashlib
 
 app = Flask(__name__)
-SECRET_KEY = '123456789012345678901234'
 app.config['SESSION_TYPE'] = 'redis'
 app.config['SESSION_REDIS'] = redis.Redis()
-app.config['SECRET_KEY'] = SECRET_KEY
+
+# https://flask.palletsprojects.com/en/1.1.x/config/#SECRET_KEY
+app.config['SECRET_KEY'] = os.environ['SESSION_PWD']
+
 CORS(app)
 Session(app)
 
 
-@app.route("/", methods=["POST"])
-def hello():
-    user_info = request.data.decode("UTF-8")
-    message_tag = "create_user_attempt"
-    message = [message_tag, user_info]
-    print("Request", user_info)
-    session['key'] = 123
-    print('Key: ', session.get('key'))
-
-    return {"message": "data received"}
-
 @app.route("/create_account", methods=["POST"])
 def create_account():
-    data = request.data.decode("UTF-8")
+    try:
+        data = json.loads(
+            request.data.decode("UTF-8")
+        )
+    except:
+        return {"error": "invalid payload"}
 
     username = data.get("username")
     email = data.get("email")
-    password = data.get("email")
+    password = data.get("password")
 
     if not all([password, email, username]):
         return (
@@ -45,16 +42,58 @@ def create_account():
             400
         )
 
-    hash = hashlib.pbkdf2_hmac(
-        hash_name='sha256',
-        password=password.encode('utf-8'),
-        salt=os.environ["SALT"].encode('utf-8'),
-        iterations=100000
+    session = get_session()
+    status = create_user(
+        session=session,
+        username=username,
+        email=email,
+        password=password
     )
 
-    return {"success": "Account created"}, 200
+    if status.get("error"):
+        return status, 400
+    else:
+        return status, 200
+
+
+
+@app.route("/login", methods=["POST"])
+def login_user():
+    try:
+        data = json.loads(
+            request.data.decode("UTF-8")
+        )
+    except:
+        return {"error": "invalid payload"}
+
+    email = data.get("email")
+    password = data.get("password")
+
+    if not all([password, email]):
+        return (
+            {
+                "error": "missing one of password or email"
+            },
+            400
+        )
+
+    session = get_session()
+    response = validate_user(
+        session=session,
+        email=email,
+        password=password
+    )
+
+    if response.get("success"):
+        user = get_user(session=session, email=email)
+        flask_session['username'] = user['username']
+        flask_session['id'] = user['id']
+        flask_session['user_id'] = f"{user['username']}_{user['id']}"
+        return response, 200
+    else:
+        return response, 400
 
 
 if __name__ == "__main__":
 
-    app.run(host='0.0.0.0', port=5002)
+    app.run()
